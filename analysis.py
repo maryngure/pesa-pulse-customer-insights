@@ -50,11 +50,11 @@ def extract_attributes(customers: list[dict]) -> list[dict]:
         email = customer["email"]
 
         row = {
-            "id": customer["id"],
+            "customer_id": customer["id"],
             "name": customer["name"],
             "username": customer["username"],
             "email": email,
-            "email_domain": email.rsplit("@", 1)[-1],
+            "email_domain": email.rsplit(".", 1)[-1],
             "phone": customer["phone"],
             "city": customer["address"]["city"],
             "zipcode": customer["address"]["zipcode"],
@@ -72,14 +72,8 @@ def extract_attributes(customers: list[dict]) -> list[dict]:
 
 
 def unique_cities(customers: list[dict]) -> set[str]:
-    """Return the set of distinct cities."""
-    cities = set()
-
-    for customer in customers:
-        city = customer["address"]["city"]
-        cities.add(city)
-
-    return cities
+    """Return the set of distinct customer cities."""
+    return {customer["address"]["city"] for customer in customers}
     
 
 
@@ -101,18 +95,19 @@ def city_counts(customers: list[dict]) -> dict[str, int]:
 
 def email_domain_counts(customers: list[dict]) -> dict[str, int]:
     """Count customers by email top-level domain."""
-    domains = {}
+    domains = {
+        customer["email"].rsplit(".", 1)[-1]
+        for customer in customers
+    }
 
-    for customer in customers:
-        email = customer["email"]
-        domain = email.rsplit(".", 1)[-1]
-
-        if domain in domains:
-            domains[domain] += 1
-        else:
-            domains[domain] = 1
-
-    return domains
+    return {
+        domain: sum(
+            1
+            for customer in customers
+            if customer["email"].rsplit(".", 1)[-1] == domain
+        )
+        for domain in domains
+    }
 
 
 def to_dataframe(rows: list[dict]) -> pd.DataFrame:
@@ -121,40 +116,52 @@ def to_dataframe(rows: list[dict]) -> pd.DataFrame:
     return df
 
 
-def plot_distribution(counts: dict[str, int], path: Path) -> None:
-    """Save a labelled chart of the distribution to path."""
-    sorted_counts = dict(
-        sorted(counts.items(), key=lambda item: item[1], reverse=True)
+def plot_distribution(
+    counts: dict[str, int],
+    path: Path,
+    title: str,
+    xlabel: str
+) -> None:
+    """Save a labelled bar chart of a distribution."""
+    sorted_counts = sorted(
+        counts.items(), key=lambda x: (-x[1], x[0])
     )
 
-    plt.figure(figsize=(9, 5))
-    plt.bar(sorted_counts.keys(), sorted_counts.values())
-    plt.title("Customer Distribution by Email Top-Level Domain")
-    plt.xlabel("Email Top-Level Domain")
+    labels = [item[0] for item in sorted_counts]
+    values = [item[1] for item in sorted_counts]
+
+    plt.figure(figsize=(10, 5))
+    plt.bar(labels, values)
+    plt.title(title)
+    plt.xlabel(xlabel)
     plt.ylabel("Number of Customers")
-    plt.xticks(rotation=45)
+    plt.xticks(rotation=45, ha="right")
     plt.tight_layout()
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    plt.savefig(path)
+    plt.savefig(path, dpi=150)
     plt.close()
+
 
 
 if __name__ == "__main__":
     customers = get_customers()
 
+    # Stop execution if the API returns no data
+    if not customers:
+        raise SystemExit("Analysis stopped: no customer data was retrieved.")
+
     print("Number of customers:", len(customers))
     print("First customer:")
-    print(customers[0] if customers else "No data retrieved")
+    print(customers[0])
 
     print("\nExploring the first customer:")
-    if customers:
-        explore(customers[0])
+    explore(customers[0])
 
     rows = extract_attributes(customers)
 
     print("\nFirst cleaned customer:")
-    print(rows[0] if rows else "No data to display")
+    print(rows[0])
 
     cities = unique_cities(customers)
 
@@ -166,7 +173,7 @@ if __name__ == "__main__":
 
     print("\nCustomers per city (most common first):")
     for city, count in sorted(
-        counts.items(), key=lambda item: item[1], reverse=True
+        counts.items(), key=lambda item: (-item[1], item[0])
     ):
         print(f"{city}: {count}")
 
@@ -174,7 +181,7 @@ if __name__ == "__main__":
 
     print("\nCustomers by email top-level domain (most common first):")
     for domain, count in sorted(
-        domain_counts.items(), key=lambda item: item[1], reverse=True
+        domain_counts.items(), key=lambda item: (-item[1], item[0])
     ):
         print(f"{domain}: {count}")
 
@@ -188,8 +195,27 @@ if __name__ == "__main__":
     print("\nCustomers by city using pandas:")
     print(df["city"].value_counts())
 
-    print("\nCustomers by email domain using pandas:")
+    print("\nCustomers by email top-level domain using pandas:")
     print(df["email_domain"].value_counts())
+
+    # Findings summary
+    print("\n" + "=" * 45)
+    print("PESA PULSE: CUSTOMER ANALYSIS SUMMARY")
+    print("=" * 45)
+    print(f"Total customers analysed: {len(df)}")
+    print(f"Unique cities: {len(cities)}")
+    print(f"Distinct email top-level domains: {len(domain_counts)}")
+
+    top_domain, top_count = sorted(
+        domain_counts.items(), key=lambda item: (-item[1], item[0])
+    )[0]
+    print(f"Most common email TLD: .{top_domain} ({top_count} customers)")
+
+    print(
+        "\nMarketing insight: Email TLD distribution is more informative "
+        "for this sample because each city has only one customer, "
+        "while some email TLDs occur more frequently."
+    )
 
     output_dir = Path("output")
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -197,9 +223,12 @@ if __name__ == "__main__":
     # Export cleaned customer data
     df.to_csv(output_dir / "customers.csv", index=False)
 
-    # Export city counts
+    # Export city counts, sorted by count and then alphabetically
+    sorted_city_counts = sorted(
+        counts.items(), key=lambda item: (-item[1], item[0])
+    )
     city_df = pd.DataFrame(
-        list(counts.items()),
+        sorted_city_counts,
         columns=["city", "customer_count"]
     )
     city_df.to_csv(output_dir / "city_counts.csv", index=False)
@@ -208,7 +237,22 @@ if __name__ == "__main__":
     print("Saved:", output_dir / "customers.csv")
     print("Saved:", output_dir / "city_counts.csv")
 
-    chart_path = output_dir / "customer_distribution.png"
-    plot_distribution(domain_counts, chart_path)
+    # Save city distribution chart
+    city_chart_path = output_dir / "city_distribution.png"
+    plot_distribution(
+        counts,
+        city_chart_path,
+        "Customer Distribution by City",
+        "City"
+    )
+    print("Saved chart:", city_chart_path)
 
-    print("Saved chart:", chart_path)
+    # Save email TLD distribution chart
+    domain_chart_path = output_dir / "customer_distribution.png"
+    plot_distribution(
+        domain_counts,
+        domain_chart_path,
+        "Customer Distribution by Email Top-Level Domain",
+        "Email Top-Level Domain"
+    )
+    print("Saved chart:", domain_chart_path)
