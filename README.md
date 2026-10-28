@@ -37,11 +37,14 @@ Nested fields include address.city, address.zipcode, address.geo.lat, address.ge
 - The `.biz` email top-level domain was the most common, appearing in 3 of the 10 records (30%).
 - There were 8 distinct email top-level domains across the 10 records.
 
+Chart comparison: The email top-level domain chart is more informative for this sample because the 10 customers represent 10 different cities, resulting in identical city counts. Email-TLD counts show variation, with .biz appearing three times. These findings describe the sample data only and should not be treated as evidence of broader customer or market behaviour.
+
 ## Output Files
 
 - `output/customers.csv` — cleaned customer records with 12 attributes.
 - `output/city_counts.csv` — customer counts for each city.
 - `output/customer_distribution.png` — bar chart of customer counts by email top-level domain.
+- `output/city_distribution.png` - bar chart of customer distribution by city.
 
 ## How to Run
 
